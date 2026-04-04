@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Citadel - Records</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <div class="logo-icon">🛡️</div>
+                    <span class="logo-text">Citadel</span>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="dashboard.html" class="nav-item">
+                    <span class="nav-icon">📊</span>
+                    <span>Dashboard</span>
+                </a>
+                <a href="verifications.html" class="nav-item active">
+                    <span class="nav-icon">✓</span>
+                    <span>Verification Logs</span>
+                </a>
+                <a href="alerts.html" class="nav-item">
+                    <span class="nav-icon">⚠️</span>
+                    <span>Flagged Alerts</span>
+                </a>
+                <a href="verification_flow.html" class="nav-item" style="display: flex !important;">
+                    <span class="nav-icon">🔄</span>
+                    <span>New KYC Flow</span>
+                </a>
+                <a href="analytics.html" class="nav-item">
+                    <span class="nav-icon">📈</span>
+                    <span>Analytics</span>
+                </a>
+                <a href="settings.html" class="nav-item">
+                    <span class="nav-icon">⚙️</span>
+                    <span>Settings</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <!-- WEATHER WIDGET REMOVED -->
+                
+                <div class="user-info" onclick="window.location.href='dashboard.html'">
+                    <div class="user-avatar" id="profileAvatar"></div>
+                    <div class="user-details">
+                        <span class="user-name" id="profileName"></span>
+                        <span class="user-role" id="profileRole"></span>
+                    </div>
+                </div>
+                
+                <button class="logout-btn" onclick="logout()">
+                    <span>🚪</span> Logout
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <h1>Verifications</h1>
+            
+            <!-- Filters Bar -->
+            <div class="filters-bar">
+                <div class="search-box">
+                    <input type="text" placeholder="Search verifications..." class="search-input">
+                </div>
+                <div class="filter-actions">
+                    <select class="filter-select">
+                        <option>All Status</option>
+                        <option>Verified</option>
+                        <option>Flagged</option>
+                        <option>Pending</option>
+                    </select>
+                    <select class="filter-select">
+                        <option>All Dates</option>
+                        <option>Today</option>
+                        <option>This Week</option>
+                        <option>This Month</option>
+                    </select>
+                    <button class="export-btn" onclick="exportData()">📥 Export</button>
+                </div>
+            </div>
+
+            <!-- Verifications Table with PREVIOUS INDIAN NAMES -->
+            <div class="data-table">
+                <table class="kyc-table">
+                    <thead>
+                        <tr>
+                            <th>Request ID</th>
+                            <th>Document Type</th>
+                            <th>Confidence Score</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="verificationsTableBody">
+                        <tr style="text-align: center; color: #9ca3af;">
+                            <td colspan="6">Loading verification records...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        const BACKEND_URL = 'http://localhost:8000/api/v1';
+        
+        // Load current user
+        let currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        
+        if (!currentUser) {
+            window.location.href = 'index.html';
+        }
+
+        // Update UI with user data
+        document.getElementById('profileName').textContent = currentUser.name;
+        document.getElementById('profileRole').textContent = currentUser.role;
+        
+        // Generate avatar initials
+        const initials = currentUser.name.split(' ').map(n => n[0]).join('').toUpperCase();
+        document.getElementById('profileAvatar').textContent = initials;
+
+        // State
+        let allVerifications = [];
+        let currentPage = 0;
+        const pageSize = 50;
+
+        // Load verifications on page load
+        async function loadVerifications() {
+            try {
+                const response = await fetch(`${BACKEND_URL}/verification-logs/records?limit=${pageSize}&offset=${currentPage * pageSize}`);
+
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                allVerifications = data.data;
+                
+                console.log('Loaded verifications:', allVerifications);
+                renderTable();
+                
+            } catch (error) {
+                console.error('Error loading verifications:', error);
+                document.getElementById('verificationsTableBody').innerHTML = `
+                    <tr style="text-align: center; color: #ef4444;">
+                        <td colspan="6">Error loading verification records. Make sure backend is running on port 8000.</td>
+                    </tr>
+                `;
+            }
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('verificationsTableBody');
+            
+            if (allVerifications.length === 0) {
+                tbody.innerHTML = `
+                    <tr style="text-align: center; color: #9ca3af;">
+                        <td colspan="6">No verifications found</td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = allVerifications.map(record => {
+                const statusColor = record.status === 'Verified' ? '#10b981' : 
+                                  record.status === 'Review Required' ? '#f59e0b' : '#ef4444';
+                const statusBg = record.status === 'Verified' ? '#d1fae5' : 
+                               record.status === 'Review Required' ? '#fef3c7' : '#fee2e2';
+                const confidencePercent = Math.round((record.confidence_score || 0) * 100);
+                const confidenceColor = confidencePercent < 60 ? '#ef4444' : '#059669';
+                
+                const date = new Date(record.created_at);
+                const formattedDate = date.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                });
+
+                return `
+                    <tr>
+                        <td style="font-weight: 500; color: #111827; cursor: pointer;" onclick="viewDetails('${record.verification_id}')">
+                            ${record.verification_id.substring(0, 12)}...
+                        </td>
+                        <td>${record.document_type || 'Unknown'}</td>
+                        <td>
+                            <div style="font-weight: 600; color: ${confidenceColor}; font-size: 14px;">
+                                ${confidencePercent}%
+                            </div>
+                        </td>
+                        <td>
+                            <div style="display: inline-block; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; background-color: ${statusBg}; color: ${statusColor};">
+                                ${record.status}
+                            </div>
+                        </td>
+                        <td style="color: #6b7280; font-size: 14px;">
+                            ${formattedDate}
+                        </td>
+                        <td>
+                            <button onclick="viewDetails('${record.verification_id}')" style="background: #0d9488; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;">
+                                View
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        async function viewDetails(verification_id) {
+            try {
+                const response = await fetch(`${BACKEND_URL}/verifications/${verification_id}`);
+                
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+                
+                const detail = await response.json();
+                
+                // Create a modal or navigate to detail page
+                const detailsText = `
+ID: ${detail.verification_id}
+Document Type: ${detail.document_type}
+Confidence Score: ${(detail.confidence_score * 100).toFixed(1)}%
+Status: ${detail.status}
+Address: ${detail.detected_address || 'Not detected'}
+Created: ${new Date(detail.created_at).toLocaleString()}
+                `;
+                
+                alert(detailsText);
+                
+            } catch (error) {
+                console.error('Error viewing details:', error);
+                alert('Error loading verification details');
+            }
+        }
+
+        function exportData() {
+            if (allVerifications.length === 0) {
+                alert('No data to export');
+                return;
+            }
+
+            // Create CSV content
+            const headers = ['Request ID', 'Document Type', 'Confidence Score', 'Status', 'Date', 'Address'];
+            const csvContent = [
+                headers.join(','),
+                ...allVerifications.map(record => [
+                    record.verification_id,
+                    record.document_type,
+                    record.confidence_score,
+                    record.status,
+                    record.created_at,
+                    record.detected_address?.replace(/,/g, ';') || 'Not detected'
+                ].join(','))
+            ].join('\n');
+
+            // Create blob and download
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `verifications_${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                localStorage.removeItem('currentUser');
+                window.location.href = 'index.html';
+            }
+        }
+
+        // Load verifications when page loads
+        loadVerifications();
+    </script>
+</body>
+</html>
